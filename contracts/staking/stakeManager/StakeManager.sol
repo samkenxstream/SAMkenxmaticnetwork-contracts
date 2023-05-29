@@ -152,7 +152,10 @@ contract StakeManager is
     }
 
     function delegatorsReward(uint256 validatorId) public view returns (uint256) {
-        (, uint256 _delegatorsReward) = _evaluateValidatorAndDelegationReward(validatorId);
+        uint256 _delegatorsReward;
+        if (validators[validatorId].deactivationEpoch == 0) {
+            (, _delegatorsReward) = _evaluateValidatorAndDelegationReward(validatorId);
+        }
         return validators[validatorId].delegatorsReward.add(_delegatorsReward).sub(INITIALIZED_AMOUNT);
     }
 
@@ -912,7 +915,7 @@ contract StakeManager is
         // distribute rewards between signed validators
         rewardPerStake = newRewardPerStake;
 
-        // evaluate rewards for unstaked validators to avoid getting new rewards until they claim their stake
+        // evaluate rewards for unstaked validators to ensure they get the reward for signing during their deactivationEpoch
         _updateValidatorsRewards(deactivatedValidators, totalDeactivatedValidators, newRewardPerStake);
 
         _finalizeCommit();
@@ -935,6 +938,11 @@ contract StakeManager is
         uint256 currentRewardPerStake,
         uint256 newRewardPerStake
     ) private {
+        uint256 deactivationEpoch = validators[validatorId].deactivationEpoch;
+        if (deactivationEpoch != 0 && currentEpoch >= deactivationEpoch) {
+            return;
+        }
+
         uint256 initialRewardPerStake = validators[validatorId].initialRewardPerStake;
 
         // attempt to save gas in case if rewards were updated previosuly
@@ -1155,7 +1163,6 @@ contract StakeManager is
         uint256 reward = validators[validatorId].reward.sub(INITIALIZED_AMOUNT);
         totalRewardsLiquidated = totalRewardsLiquidated.add(reward);
         validators[validatorId].reward = INITIALIZED_AMOUNT;
-        validators[validatorId].initialRewardPerStake = rewardPerStake;
         _transferToken(validatorUser, reward);
         logger.logClaimRewards(validatorId, reward, totalRewardsLiquidated);
     }
